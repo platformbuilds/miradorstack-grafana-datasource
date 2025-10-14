@@ -3,8 +3,9 @@ import { DataQuery, DataSourceJsonData } from '@grafana/data';
 export interface MyQuery extends DataQuery {
   queryType: 'logs' | 'metrics' | 'traces';
   queryText: string;
-  // Visual query builder fields for logs
-  useVisualQuery?: boolean;
+  // Editor mode for logs (builder or code)
+  editorMode?: 'builder' | 'code';
+  // Visual query builder fields for logs (when editorMode is 'builder')
   visualQuery?: VisualQueryCondition[];
   // Query engine for logs (lucene or bleve)
   queryEngine?: 'lucene' | 'bleve';

@@ -29,6 +29,7 @@ export class DataSource extends DataSourceApi<MyQuery, MyDataSourceOptions> {
     return {
       queryType: 'logs',
       queryText: '',
+      editorMode: 'code', // Default to code mode
       queryEngine: 'bleve',
     };
   }

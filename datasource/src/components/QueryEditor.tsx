@@ -1,5 +1,5 @@
 import React, { ChangeEvent, useState, useEffect } from 'react';
-import { InlineField, Input, Select, Stack, Switch, Button, IconButton } from '@grafana/ui';
+import { InlineField, Input, Select, Stack, Button, IconButton, RadioButtonGroup, Field, FieldSet, QueryField } from '@grafana/ui';
 import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { MyDataSourceOptions, MyQuery, VisualQueryCondition } from '../types';
@@ -15,6 +15,11 @@ const queryTypeOptions: SelectableValue[] = [
 const queryEngineOptions: SelectableValue[] = [
   { label: 'Bleve (Recommended)', value: 'bleve' },
   { label: 'Lucene', value: 'lucene' },
+];
+
+const editorModeOptions = [
+  { label: 'Builder', value: 'builder' },
+  { label: 'Code', value: 'code' },
 ];
 
 const operatorOptions: SelectableValue[] = [
@@ -40,32 +45,23 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
   const [logFields, setLogFields] = useState<string[]>([]);
   const [loadingFields, setLoadingFields] = useState(false);
 
-  const { queryType, queryText, useVisualQuery, visualQuery, queryEngine } = query;
-
-  // Debug logging for state changes
-  useEffect(() => {
-    console.log('QueryEditor state:', { queryType, useVisualQuery, logFields, loadingFields });
-  }, [queryType, useVisualQuery, logFields, loadingFields]);
+  const { queryType, queryText, editorMode, visualQuery, queryEngine } = query;
 
   useEffect(() => {
-    if (queryType === 'logs' && useVisualQuery) {
-      console.log('Loading log fields...');
+    if (queryType === 'logs' && editorMode === 'builder') {
       loadLogFields();
     }
-  }, [queryType, useVisualQuery]);
+  }, [queryType, editorMode]);
 
   const loadLogFields = async () => {
     if (!datasource) return;
 
     setLoadingFields(true);
     try {
-      console.log('Loading log fields via datasource.getLogFields()...');
       const fields = await datasource.getLogFields();
-      console.log('Log fields loaded:', fields);
       setLogFields(fields);
     } catch (error) {
       console.error('Failed to load log fields:', error);
-      // Fallback to default fields if API fails
       setLogFields(['timestamp', 'body', 'severity']);
     } finally {
       setLoadingFields(false);
@@ -73,37 +69,37 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
   };
 
   const onQueryTypeChange = (value: SelectableValue) => {
-    onChange({ ...query, queryType: value.value, useVisualQuery: false });
+    onChange({ ...query, queryType: value.value });
   };
 
   const onQueryEngineChange = (value: SelectableValue) => {
     onChange({ ...query, queryEngine: value.value });
   };
 
-  const onQueryTextChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, queryText: event.target.value });
-  };
+  const onEditorModeChange = (value: string) => {
+    const newEditorMode = value as 'builder' | 'code';
+    let newQuery = { ...query, editorMode: newEditorMode };
 
-  const onUseVisualQueryChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const useVisual = event.target.checked;
-    let initialVisualQuery = visualQuery;
-
-    // If enabling visual query and no conditions exist, create an initial one
-    if (useVisual && (!visualQuery || visualQuery.length === 0)) {
-      initialVisualQuery = [{
+    // If switching to builder mode and no visual query exists, create initial condition
+    if (newEditorMode === 'builder' && (!visualQuery || visualQuery.length === 0)) {
+      newQuery.visualQuery = [{
         field: logFields.length > 0 ? logFields[0] : '',
         operator: 'equals',
         value: '',
         logicalOperator: 'AND'
       }];
+      newQuery.queryText = '';
+    }
+    // If switching to code mode, generate query text from visual query
+    else if (newEditorMode === 'code' && visualQuery && visualQuery.length > 0) {
+      newQuery.queryText = buildLuceneQuery(visualQuery);
     }
 
-    onChange({
-      ...query,
-      useVisualQuery: useVisual,
-      visualQuery: initialVisualQuery,
-      queryText: useVisual ? buildLuceneQuery(initialVisualQuery || []) : queryText
-    });
+    onChange(newQuery);
+  };
+
+  const onQueryTextChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...query, queryText: event.target.value });
   };
 
   const onVisualQueryChange = (newVisualQuery: VisualQueryCondition[]) => {
@@ -190,7 +186,7 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
   };
 
   return (
-    <Stack gap={0}>
+    <Stack gap={2}>
       <InlineField label="Query Type" labelWidth={16}>
         <Select
           options={queryTypeOptions}
@@ -201,95 +197,110 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
       </InlineField>
 
       {queryType === 'logs' && (
-        <InlineField label="Query Engine" labelWidth={16} tooltip="Search engine for log queries">
-          <Select
-            options={queryEngineOptions}
-            value={queryEngine || 'bleve'}
-            onChange={onQueryEngineChange}
-            width={16}
-          />
-        </InlineField>
-      )}
-
-      {queryType === 'logs' && (
-        <InlineField label="Visual Query Builder" labelWidth={16}>
-          <Switch
-            value={useVisualQuery || false}
-            onChange={onUseVisualQueryChange}
-          />
-        </InlineField>
-      )}
-
-      {(!useVisualQuery || queryType !== 'logs') && (
-        <InlineField label="Query Text" labelWidth={16} tooltip="Enter your query">
-          <Input
-            id="query-editor-query-text"
-            onChange={onQueryTextChange}
-            value={queryText || ''}
-            required
-            placeholder={queryType === 'logs' ? 'Enter Lucene query (e.g., service.name:telemetrygen)' : 'Enter query'}
-          />
-        </InlineField>
-      )}
-
-      {useVisualQuery && queryType === 'logs' && (
-        <Stack gap={1}>
-          <div>
-            <Button onClick={addCondition} size="sm" icon="plus">
-              Add Condition
-            </Button>
-          </div>
-
-          {(visualQuery || []).map((condition, index) => (
-            <Stack key={index} gap={1} direction="row" alignItems="center">
-              {index > 0 && (
-                <Select
-                  options={logicalOperatorOptions}
-                  value={condition.logicalOperator}
-                  onChange={(value) => updateCondition(index, { logicalOperator: value.value })}
-                  width={8}
-                />
-              )}
-
-              <Select
-                options={logFields.map(field => ({ label: field, value: field }))}
-                value={condition.field}
-                onChange={(value) => updateCondition(index, { field: value.value })}
-                placeholder={loadingFields ? 'Loading fields...' : 'Select field'}
-                width={20}
-                isLoading={loadingFields}
-              />
-
-              <Select
-                options={operatorOptions}
-                value={condition.operator}
-                onChange={(value) => updateCondition(index, { operator: value.value })}
-                width={12}
-              />
-
-              <Input
-                value={condition.value}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => updateCondition(index, { value: e.target.value })}
-                placeholder="Enter value"
-                width={20}
-              />
-
-              <IconButton
-                name="trash-alt"
-                onClick={() => removeCondition(index)}
-                tooltip="Remove condition"
-              />
-            </Stack>
-          ))}
-
-          <InlineField label="Generated Query" labelWidth={16}>
-            <Input
-              value={queryText || ''}
-              readOnly
-              placeholder="Generated Lucene query will appear here"
+        <>
+          <InlineField label="Query Engine" labelWidth={16} tooltip="Search engine for log queries">
+            <Select
+              options={queryEngineOptions}
+              value={queryEngine || 'bleve'}
+              onChange={onQueryEngineChange}
+              width={16}
             />
           </InlineField>
-        </Stack>
+
+          <InlineField label="Editor Mode" labelWidth={16}>
+            <RadioButtonGroup
+              options={editorModeOptions}
+              value={editorMode || 'code'}
+              onChange={onEditorModeChange}
+            />
+          </InlineField>
+        </>
+      )}
+
+      {queryType === 'logs' && editorMode === 'code' && (
+        <Field label="Query" description="Enter Lucene query">
+          <QueryField
+            query={queryText || ''}
+            onChange={(value) => onChange({ ...query, queryText: value })}
+            onRunQuery={onRunQuery}
+            placeholder='service.name:"otelgen"'
+            portalOrigin="body"
+          />
+        </Field>
+      )}
+
+      {queryType === 'logs' && editorMode === 'builder' && (
+        <FieldSet label="Visual Query Builder">
+          <Stack gap={2}>
+            <Field>
+              <Button onClick={addCondition} size="sm" icon="plus">
+                Add condition
+              </Button>
+            </Field>
+
+            {(visualQuery || []).map((condition, index) => (
+              <div key={index} style={{ width: '100%', overflow: 'hidden' }}>
+                <Stack gap={1} direction="row" alignItems="center" wrap="wrap">
+                  {index > 0 && (
+                    <Select
+                      options={logicalOperatorOptions}
+                      value={condition.logicalOperator}
+                      onChange={(value) => updateCondition(index, { logicalOperator: value.value })}
+                      width={6}
+                    />
+                  )}
+
+                  <Select
+                    options={logFields.map(field => ({ label: field, value: field }))}
+                    value={condition.field}
+                    onChange={(value) => updateCondition(index, { field: value.value })}
+                    placeholder={loadingFields ? 'Loading fields...' : 'Select field'}
+                    width={16}
+                    isLoading={loadingFields}
+                  />
+
+                  <Select
+                    options={operatorOptions}
+                    value={condition.operator}
+                    onChange={(value) => updateCondition(index, { operator: value.value })}
+                    width={10}
+                  />
+
+                  <Input
+                    value={condition.value}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => updateCondition(index, { value: e.target.value })}
+                    placeholder="value"
+                    width={16}
+                  />
+
+                  <IconButton
+                    name="trash-alt"
+                    onClick={() => removeCondition(index)}
+                    tooltip="Remove condition"
+                  />
+                </Stack>
+              </div>
+            ))}
+
+            <Field label="Generated Query" description="Lucene query generated from visual conditions">
+              <Input
+                value={queryText || ''}
+                readOnly
+                placeholder="Generated query will appear here"
+              />
+            </Field>
+          </Stack>
+        </FieldSet>
+      )}
+
+      {(queryType === 'metrics' || queryType === 'traces') && (
+        <InlineField label="Query" labelWidth={16}>
+          <Input
+            value={queryText || ''}
+            onChange={onQueryTextChange}
+            placeholder={`Enter ${queryType} query`}
+          />
+        </InlineField>
       )}
     </Stack>
   );
