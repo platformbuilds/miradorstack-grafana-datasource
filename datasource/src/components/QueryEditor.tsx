@@ -231,16 +231,10 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
 
       {queryType === 'logs' && editorMode === 'builder' && (
         <FieldSet label="Visual Query Builder">
-          <Stack gap={2}>
-            <Field>
-              <Button onClick={addCondition} size="sm" icon="plus">
-                Add condition
-              </Button>
-            </Field>
-
+          <Stack gap={2} direction="column">
             {(visualQuery || []).map((condition, index) => (
-              <div key={index} style={{ width: '100%', overflow: 'hidden' }}>
-                <Stack gap={1} direction="row" alignItems="center" wrap="wrap">
+              <Field key={index}>
+                <Stack gap={1} direction="row" alignItems="center">
                   {index > 0 && (
                     <Select
                       options={logicalOperatorOptions}
@@ -249,7 +243,6 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
                       width={6}
                     />
                   )}
-
                   <Select
                     options={logFields.map(field => ({ label: field, value: field }))}
                     value={condition.field}
@@ -258,35 +251,35 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
                     width={16}
                     isLoading={loadingFields}
                   />
-
                   <Select
                     options={operatorOptions}
                     value={condition.operator}
                     onChange={(value) => updateCondition(index, { operator: value.value })}
                     width={10}
                   />
-
                   <Input
                     value={condition.value}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => updateCondition(index, { value: e.target.value })}
                     placeholder="value"
                     width={16}
                   />
-
                   <IconButton
                     name="trash-alt"
                     onClick={() => removeCondition(index)}
                     tooltip="Remove condition"
                   />
                 </Stack>
-              </div>
+              </Field>
             ))}
-
+            <Button onClick={addCondition} size="sm" icon="plus" variant="primary" style={{ width: '100%' }}>
+              Add condition
+            </Button>
             <Field label="Generated Query" description="Lucene query generated from visual conditions">
               <Input
                 value={queryText || ''}
                 readOnly
                 placeholder="Generated query will appear here"
+                width={40}
               />
             </Field>
           </Stack>
