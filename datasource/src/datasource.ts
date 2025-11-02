@@ -267,14 +267,62 @@ export class DataSource extends DataSourceApi<MyQuery, MyDataSourceOptions> {
         try {
           switch (target.queryType) {
             case 'logs':
-              const logsResponse = await this.client.logs({
-                query: target.queryText || '',
+              // Build the query with time range included in the query string
+              let userQuery = target.queryText || '';
+              
+              // Check if user already included time range in their query
+              const hasTimeFilter = userQuery.includes('_time:') || userQuery.includes('_time ');
+              
+              let finalQuery = userQuery;
+              if (!hasTimeFilter) {
+                // Convert Grafana time range to Lucene time range format
+                const fromTime = new Date(from).toISOString();
+                const toTime = new Date(to).toISOString();
+                const timeFilter = `_time:[${fromTime} TO ${toTime}]`;
+                
+                if (userQuery.trim()) {
+                  finalQuery = `${timeFilter} AND (${userQuery})`;
+                } else {
+                  finalQuery = timeFilter;
+                }
+              }
+              
+              const logsQuery = {
+                query: finalQuery,
+                // Still include start/end as fallback, but query time filter takes precedence
                 start: from,
                 end: to,
                 limit: 1000,
                 search_engine: target.queryEngine || 'bleve',
-                query_language: target.queryLanguage || 'lucene' // Default to lucene for compatibility
+                query_language: target.queryLanguage || 'lucene'
+              };
+              
+              console.log('🔍 Logs Query Debug:', {
+                originalQuery: target.queryText,
+                timeRange: { 
+                  from: new Date(from).toISOString(), 
+                  to: new Date(to).toISOString(),
+                  fromMs: from,
+                  toMs: to
+                },
+                hasTimeFilter,
+                finalQuery,
+                fullQuery: logsQuery
               });
+              
+              const logsResponse = await this.client.logs(logsQuery);
+              
+              console.log('📋 Logs Response Debug:', {
+                status: logsResponse?.status,
+                dataStructure: {
+                  hasData: !!logsResponse?.data,
+                  hasLogs: !!logsResponse?.data?.logs,
+                  logsCount: logsResponse?.data?.logs?.length || 0,
+                  fields: logsResponse?.data?.fields || []
+                },
+                sample: logsResponse?.data?.logs?.[0] || null
+              });
+              
               return this.parseLogsResponse(logsResponse, target.refId);
             case 'metrics':
               let metricsResponse;
