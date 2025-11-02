@@ -1,5 +1,4 @@
-import { getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+// Direct fetch API for frontend datasource - no Grafana backend service needed
 
 export class MiradorAPIError extends Error {
   constructor(message: string, public status?: number) {
@@ -9,11 +8,19 @@ export class MiradorAPIError extends Error {
 }
 
 export class MiradorAPIClient {
+  private apiBaseUrl: string;
+
   constructor(
-    private baseUrl: string,
+    baseUrl: string,
     private token?: string,
     private tenantId?: string
-  ) {}
+  ) {
+    // Ensure the base URL includes the API version path
+    this.apiBaseUrl = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    if (!this.apiBaseUrl.includes('/api/v1')) {
+      this.apiBaseUrl += 'api/v1';
+    }
+  }
 
   private async request(
     endpoint: string,
@@ -21,8 +28,10 @@ export class MiradorAPIClient {
     params?: Record<string, any>,
     body?: any
   ): Promise<any> {
-    const url = `${this.baseUrl}${endpoint}`;
-    const headers: Record<string, string> = {};
+    const url = `${this.apiBaseUrl}${endpoint}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
@@ -30,18 +39,60 @@ export class MiradorAPIClient {
       headers['X-Tenant-ID'] = this.tenantId;
     }
 
-    const response = getBackendSrv().fetch({
-      url,
-      method: method as string,
-      headers,
-      params,
-      data: body,
-    });
-
     try {
-      const result = await lastValueFrom(response);
-      return result;
+      // Use fetch directly for frontend datasource instead of Grafana's backend service
+      const fetchOptions: RequestInit = {
+        method: method.toUpperCase(),
+        headers,
+        mode: 'cors', // Enable CORS for cross-origin requests
+      };
+
+      // Add query parameters to URL if provided
+      let finalUrl = url;
+      if (params && Object.keys(params).length > 0) {
+        const searchParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            if (Array.isArray(value)) {
+              value.forEach(v => searchParams.append(key, String(v)));
+            } else {
+              searchParams.append(key, String(value));
+            }
+          }
+        });
+        finalUrl += `?${searchParams.toString()}`;
+      }
+
+      // Add body for POST/PUT requests
+      if (body && (method.toLowerCase() === 'post' || method.toLowerCase() === 'put')) {
+        fetchOptions.body = JSON.stringify(body);
+      }
+
+      const response = await fetch(finalUrl, fetchOptions);
+      
+      if (!response.ok) {
+        throw new MiradorAPIError(
+          `HTTP ${response.status}: ${response.statusText}`, 
+          response.status
+        );
+      }
+
+      // Handle both JSON and text responses
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      } else {
+        const text = await response.text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          return { data: text };
+        }
+      }
     } catch (error: any) {
+      if (error instanceof MiradorAPIError) {
+        throw error;
+      }
       throw new MiradorAPIError(error.message || 'API request failed', error.status);
     }
   }
