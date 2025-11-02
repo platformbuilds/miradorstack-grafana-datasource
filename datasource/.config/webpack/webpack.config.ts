@@ -13,7 +13,7 @@ import ReplaceInFileWebpackPlugin from 'replace-in-file-webpack-plugin';
 import TerserPlugin from 'terser-webpack-plugin';
 import { SubresourceIntegrityPlugin } from 'webpack-subresource-integrity';
 import webpack, { type Configuration } from 'webpack';
-import LiveReloadPlugin from 'webpack-livereload-plugin';
+// import LiveReloadPlugin from 'webpack-livereload-plugin'; // Disabled for containerized development
 import VirtualModulesPlugin from 'webpack-virtual-modules';
 
 import { BuildModeWebpackPlugin } from './BuildModeWebpackPlugin.ts';
@@ -209,7 +209,8 @@ const config = async (env: Env): Promise<Configuration> => {
       }),
       ...(env.development
         ? [
-            new LiveReloadPlugin(),
+            // LiveReloadPlugin disabled for containerized development
+            // new LiveReloadPlugin(),
             new ForkTsCheckerWebpackPlugin({
               async: Boolean(env.development),
               issue: {

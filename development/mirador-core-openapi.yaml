@@ -15,7 +15,7 @@ servers:
         enum: [http, https]
         default: http
       host:
-        default: localhost:8080
+        default: 127.0.0.1:8010
         description: Hostname:port of mirador-core
       basePath:
         default: /api/v1
@@ -1375,8 +1375,7 @@ paths:
       tags: [metrics]
       summary: MetricsQL instant query (VictoriaMetrics)
       description: |
-        Executes an instant query against VictoriaMetrics. The `query` field also supports Lucene syntax when
-        `query_language` is `lucene` (or when auto-detected); Mirador translates Lucene into PromQL label selectors.
+        Executes an instant query against VictoriaMetrics using MetricsQL/PromQL syntax.
         When `include_definitions` is enabled (default), the response contains `definitions` sourced from the schema store
         (Weaviate) including metric and per-metric label definitions. Optional `label_keys` can limit which label keys are considered.
         When multiple metrics sources are configured in config.yaml (database.victoria_metrics + database.metrics_sources),
@@ -1389,10 +1388,6 @@ paths:
               type: object
               properties:
                 query: { type: string }
-                query_language:
-                  type: string
-                  enum: [lucene, promql]
-                  description: If `lucene`, the server translates to PromQL/MetricsQL.
                 time: { type: string }
                 include_definitions: { type: boolean, description: Include definitions in response (default true) }
                 label_keys:
@@ -1400,8 +1395,7 @@ paths:
                   items: { type: string }
                   description: Restrict definitions to these label keys
             example:
-              query_language: lucene
-              query: "__name__:http_requests_total AND job:api"
+              query: "http_requests_total{job=\"api\"}"
               time: "2025-01-01T00:00:00Z"
       responses:
         '200': { description: OK }
@@ -1421,10 +1415,6 @@ paths:
               type: object
               properties:
                 query: { type: string }
-                query_language:
-                  type: string
-                  enum: [lucene, promql]
-                  description: If `lucene`, the server translates to PromQL/MetricsQL.
                 start: { type: string }
                 end: { type: string }
                 step: { type: string }
@@ -1433,6 +1423,11 @@ paths:
                   type: array
                   items: { type: string }
                   description: Restrict definitions to these label keys
+            example:
+              query: "http_requests_total{job=\"api\"}"
+              start: "2025-01-01T00:00:00Z"
+              end: "2025-01-01T01:00:00Z"
+              step: "5m"
       responses:
         '200':
           description: OK
@@ -1482,6 +1477,15 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MetricsQLFunctionRequest'
+            examples:
+              rate_example:
+                summary: Calculate request rate per second
+                value:
+                  query: "rate(http_requests_total[5m])"
+              quantile_example:
+                summary: Calculate 95th percentile over time
+                value:
+                  query: "quantile_over_time(0.95, http_requests_total[1h])"
       responses:
         '200':
           description: Rollup function result
@@ -1508,6 +1512,21 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MetricsQLFunctionRangeRequest'
+            examples:
+              rate_range_example:
+                summary: Calculate request rate per second over time range
+                value:
+                  query: "rate(http_requests_total[5m])"
+                  start: "2025-01-01T00:00:00Z"
+                  end: "2025-01-01T01:00:00Z"
+                  step: "1m"
+              quantile_range_example:
+                summary: Calculate 95th percentile over time range
+                value:
+                  query: "quantile_over_time(0.95, http_requests_total[1h])"
+                  start: "2025-01-01T00:00:00Z"
+                  end: "2025-01-01T01:00:00Z"
+                  step: "5m"
       responses:
         '200':
           description: Rollup function result
@@ -1535,6 +1554,18 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MetricsQLFunctionRequest'
+            examples:
+              round_example:
+                summary: Round values to nearest integer
+                value:
+                  query: "round(http_requests_total)"
+              clamp_example:
+                summary: Clamp values between min and max
+                value:
+                  query: "clamp(http_requests_total, 0, 100)"
+                  params:
+                    min: 0
+                    max: 100
       responses:
         '200':
           description: Transform function result
@@ -1562,6 +1593,24 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MetricsQLFunctionRangeRequest'
+            examples:
+              round_range_example:
+                summary: Round values over time range
+                value:
+                  query: "round(http_requests_total)"
+                  start: "2025-01-01T00:00:00Z"
+                  end: "2025-01-01T01:00:00Z"
+                  step: "5m"
+              clamp_range_example:
+                summary: Clamp values between min and max over time range
+                value:
+                  query: "clamp(http_requests_total, 0, 100)"
+                  start: "2025-01-01T00:00:00Z"
+                  end: "2025-01-01T01:00:00Z"
+                  step: "5m"
+                  params:
+                    min: 0
+                    max: 100
       responses:
         '200':
           description: Transform function result
@@ -1589,6 +1638,23 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MetricsQLFunctionRequest'
+            examples:
+              sum_example:
+                summary: Sum all HTTP requests by job
+                value:
+                  query: "sum(http_requests_total) by (job)"
+              quantile_example:
+                summary: Calculate 95th percentile of response times
+                value:
+                  query: "quantile(0.95, http_request_duration_seconds)"
+                  params:
+                    quantile: 0.95
+              topk_example:
+                summary: Get top 5 HTTP request rates
+                value:
+                  query: "topk(5, rate(http_requests_total[5m]))"
+                  params:
+                    k: 5
       responses:
         '200':
           description: Aggregate function result
@@ -1616,6 +1682,32 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MetricsQLFunctionRangeRequest'
+            examples:
+              sum_range_example:
+                summary: Sum HTTP requests by job over time range
+                value:
+                  query: "sum(http_requests_total) by (job)"
+                  start: "2025-01-01T00:00:00Z"
+                  end: "2025-01-01T01:00:00Z"
+                  step: "5m"
+              quantile_range_example:
+                summary: Calculate 95th percentile over time range
+                value:
+                  query: "quantile(0.95, http_request_duration_seconds)"
+                  start: "2025-01-01T00:00:00Z"
+                  end: "2025-01-01T01:00:00Z"
+                  step: "1m"
+                  params:
+                    quantile: 0.95
+              topk_range_example:
+                summary: Get top 5 request rates over time range
+                value:
+                  query: "topk(5, rate(http_requests_total[5m]))"
+                  start: "2025-01-01T00:00:00Z"
+                  end: "2025-01-01T01:00:00Z"
+                  step: "1m"
+                  params:
+                    k: 5
       responses:
         '200':
           description: Aggregate function result
@@ -1642,6 +1734,22 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MetricsQLFunctionRequest'
+            examples:
+              label_replace_example:
+                summary: Replace label values using regex
+                value:
+                  query: "label_replace(up, \"job\", \"$1\", \"instance\", \"(.*):.*\")"
+                  params:
+                    dst: "job"
+                    replacement: "$1"
+                    src: "instance"
+                    regex: "(.*):.*"
+              label_keep_example:
+                summary: Keep only specific labels
+                value:
+                  query: "label_keep(http_requests_total, \"job\", \"instance\")"
+                  params:
+                    labels: ["job", "instance"]
       responses:
         '200':
           description: Label function result
@@ -1668,6 +1776,28 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MetricsQLFunctionRangeRequest'
+            examples:
+              label_replace_range_example:
+                summary: Replace label values over time range
+                value:
+                  query: "label_replace(up, \"job\", \"$1\", \"instance\", \"(.*):.*\")"
+                  start: "2025-01-01T00:00:00Z"
+                  end: "2025-01-01T01:00:00Z"
+                  step: "5m"
+                  params:
+                    dst: "job"
+                    replacement: "$1"
+                    src: "instance"
+                    regex: "(.*):.*"
+              label_keep_range_example:
+                summary: Keep specific labels over time range
+                value:
+                  query: "label_keep(http_requests_total, \"job\", \"instance\")"
+                  start: "2025-01-01T00:00:00Z"
+                  end: "2025-01-01T01:00:00Z"
+                  step: "5m"
+                  params:
+                    labels: ["job", "instance"]
       responses:
         '200':
           description: Label function result
@@ -1953,9 +2083,9 @@ paths:
         Note: Swagger "Try it out" sends a normal HTTP request and will not work here.
         Use a WebSocket client, for example:
 
-        - wscat: `wscat -c ws://localhost:8080/api/v1/logs/tail?query=_time:5m&sampling=10`
-        - websocat: `websocat -n ws://localhost:8080/api/v1/logs/tail?query=_time:5m`
-        - Browser console: `new WebSocket("ws://localhost:8080/api/v1/logs/tail?query=_time:5m")`
+        - wscat: `wscat -c ws://127.0.0.1:8010/api/v1/logs/tail?query=_time:5m&sampling=10`
+        - websocat: `websocat -n ws://127.0.0.1:8010/api/v1/logs/tail?query=_time:5m`
+        - Browser console: `new WebSocket("ws://127.0.0.1:8010/api/v1/logs/tail?query=_time:5m")`
 
         Query parameters:
         - `query`: LogsQL expression (e.g., `_time:5m`)

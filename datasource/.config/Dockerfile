@@ -45,8 +45,8 @@ COPY supervisord/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 
 
-# Inject livereload script into grafana index.html
-RUN sed -i 's|</body>|<script src="http://localhost:35729/livereload.js"></script></body>|g' /usr/share/grafana/public/views/index.html
+# Inject livereload script into grafana index.html (DISABLED for containerized development)
+# RUN sed -i 's|</body>|<script src="http://localhost:35729/livereload.js"></script></body>|g' /usr/share/grafana/public/views/index.html
 
 
 COPY entrypoint.sh /entrypoint.sh
