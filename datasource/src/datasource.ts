@@ -689,9 +689,20 @@ export class DataSource extends DataSourceApi<MyQuery, MyDataSourceOptions> {
   }
 
   // Get log fields for query editor
-  async getLogFields(): Promise<any[]> {
+  async getLogFields(): Promise<string[]> {
     try {
-      return await this.client.logFields();
+      const response = await this.client.logFields();
+      // API returns: {data: {fields: [...]}, status: "success"}
+      // Extract the fields array from the nested response
+      if (response?.data?.fields && Array.isArray(response.data.fields)) {
+        return response.data.fields;
+      }
+      // Fallback for different response formats
+      if (Array.isArray(response)) {
+        return response;
+      }
+      console.warn('Unexpected logFields response format:', response);
+      return [];
     } catch (error) {
       console.error('Failed to get log fields:', error);
       return [];
